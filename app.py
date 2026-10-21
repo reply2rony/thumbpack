@@ -201,8 +201,10 @@ def call_gemini(api_key, model, messages):
                 return data["choices"][0]["message"]["content"], m
             except urllib.error.HTTPError as e:
                 last = f"generation service returned {e.code}"
-                if e.code not in (429, 503):
+                if e.code not in (404, 429, 503):
                     raise AIError(last)
+                if e.code == 404:
+                    break  # model name retired/unknown: hop to the next model
             except Exception as e:
                 last = f"generation service unreachable: {e}"
                 break  # network-level failure: try the next model
