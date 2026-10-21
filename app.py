@@ -517,7 +517,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/config":
             cfg = load_config()
             return self.send_json(200, {
-                "checkout_url_pro": cfg.get("lemonsqueezy_checkout_url_pro", "")})
+                "checkout_url_pro": cfg.get("lemonsqueezy_checkout_url_pro", ""),
+                "gumroad_checkout_url": cfg.get("gumroad_checkout_url", ""),
+                "creem_checkout_url": cfg.get("creem_checkout_url", "")})
         if path in ("/sample-thumbnail.jpg",):
             return self.serve_file(path.lstrip("/"), "image/jpeg")
         if path.startswith("/uploads/"):
@@ -564,6 +566,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.handle_generate()
             if path == "/webhook/lemonsqueezy":
                 return self.handle_lemonsqueezy()
+            if path == "/webhook/gumroad":
+                return self.handle_gumroad()
+            if path == "/webhook/creem":
+                return self.handle_creem()
             return self.send_json(404, {"error": "not_found"})
         except ValueError as e:
             return self.send_json(400, {"error": str(e)})
@@ -676,11 +682,100 @@ class Handler(BaseHTTPRequestHandler):
         conn.close()
         return self.send_json(200, package)
 
+    # ---------- shared plan switching (Gumroad / Creem) ----------
+    def set_plan_by_email(self, email, plan, source, entry):
+        email = (email or "").strip().lower()
+        if not email:
+            entry["upgrade"] = "no buyer email in event"
+            return
+        conn = db()
+        row = conn.execute("SELECT * FROM users WHERE email=?",
+                           (email,)).fetchone()
+        if row:
+            conn.execute("UPDATE users SET plan=? WHERE id=?",
+                         (plan, row["id"]))
+            conn.commit()
+            entry["user_id"] = row["id"]
+            entry["plan_set"] = plan
+            entry["source"] = source
+        else:
+            entry["upgrade"] = "no matching user"
+        conn.close()
+
+    # ---------- Gumroad Ping webhook ----------
+    def handle_gumroad(self):
+        # Gumroad pings are unsigned; the Ping URL carries our own secret
+        # (?secret=...) and GUMROAD_PING_SECRET must be set in the env.
+        secret = (os.environ.get("GUMROAD_PING_SECRET") or "").strip()
+        if not secret:
+            return self.send_json(503, {"error": "gumroad_not_configured"})
+        query = urllib.parse.parse_qs(
+            urllib.parse.urlparse(self.path).query)
+        given = (query.get("secret") or [""])[0]
+        if not hmac.compare_digest(given, secret):
+            log_payment({"event": "gumroad_rejected", "reason": "bad_secret"})
+            return self.send_json(401, {"error": "bad_secret"})
+        form = urllib.parse.parse_qs(self.read_body().decode("utf-8", "replace"))
+        f = {k: (v[0] if v else "") for k, v in form.items()}
+        resource = (f.get("resource_name") or "sale").strip()
+        entry = {"event": "gumroad_" + resource, "email": f.get("email", ""),
+                 "sale_id": f.get("sale_id", ""),
+                 "product": f.get("permalink", "")}
+        cfg = load_config()
+        want = (cfg.get("gumroad_product_permalink") or "").strip()
+        if want and entry["product"] and entry["product"] != want:
+            entry["ignored"] = "different product"
+        elif resource == "sale":
+            self.set_plan_by_email(f.get("email", ""), "pro", "gumroad", entry)
+        elif resource in ("refund", "dispute", "cancellation",
+                          "subscription_ended"):
+            self.set_plan_by_email(f.get("email", ""), "free", "gumroad", entry)
+        log_payment(entry)
+        return self.send_json(200, {"ok": True})
+
+    # ---------- Creem webhook ----------
+    def handle_creem(self):
+        raw = self.read_body()
+        secret = (os.environ.get("CREEM_WEBHOOK_SECRET") or "").strip()
+        if not secret:
+            return self.send_json(503, {"error": "creem_not_configured"})
+        sig = (self.headers.get("creem-signature") or "").strip()
+        expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            log_payment({"event": "creem_rejected", "reason": "bad_signature"})
+            return self.send_json(401, {"error": "bad_signature"})
+        try:
+            event = json.loads(raw.decode() or "{}")
+        except Exception:
+            log_payment({"event": "creem_rejected", "reason": "bad_json"})
+            return self.send_json(400, {"error": "bad_json"})
+        etype = event.get("eventType") or event.get("event") or "unknown"
+        obj = event.get("object") or {}
+        customer = obj.get("customer") or {}
+        email = (customer.get("email") or obj.get("email") or "")
+        entry = {"event": "creem_" + str(etype), "email": email}
+        cfg = load_config()
+        want = (cfg.get("creem_product_id") or "").strip()
+        prod = obj.get("product") or {}
+        pid = prod.get("id") if isinstance(prod, dict) else ""
+        if want and pid and pid != want:
+            entry["ignored"] = "different product"
+        elif etype in ("checkout.completed", "subscription.active",
+                       "subscription.paid"):
+            self.set_plan_by_email(email, "pro", "creem", entry)
+        elif etype in ("subscription.canceled", "subscription.expired",
+                       "subscription.paused", "refund.created",
+                       "dispute.created"):
+            self.set_plan_by_email(email, "free", "creem", entry)
+        log_payment(entry)
+        return self.send_json(200, {"ok": True})
+
     # ---------- Lemon Squeezy webhook ----------
     def handle_lemonsqueezy(self):
         raw = self.read_body()
         cfg = load_config()
-        secret = (cfg.get("lemonsqueezy_signing_secret") or "").strip()
+        secret = ((os.environ.get("LEMONSQUEEZY_SIGNING_SECRET") or "").strip()
+                  or (cfg.get("lemonsqueezy_signing_secret") or "").strip())
         verified = False
         test_mode = not secret
         if secret:

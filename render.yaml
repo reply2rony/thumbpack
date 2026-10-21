@@ -8,6 +8,12 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false   # set in Render dashboard → Environment (never commit the key)
+      - key: LEMONSQUEEZY_SIGNING_SECRET
+        sync: false   # Lemon Squeezy webhook signing secret
+      - key: GUMROAD_PING_SECRET
+        sync: false   # our own secret inside the Gumroad Ping URL (?secret=)
+      - key: CREEM_WEBHOOK_SECRET
+        sync: false   # Creem webhook signing secret
       - key: AGNES_API_KEY
         sync: false   # Agnes AI image API (image chain provider #1)
       - key: CF_ACCOUNT_ID

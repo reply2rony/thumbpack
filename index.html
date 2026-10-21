@@ -115,6 +115,12 @@
     </div>
   </div>
 
+  <div class="card hidden" id="payPanel" style="margin-bottom:20px">
+    <b>⭐ ThumbPack Pro — choose a payment method:</b>
+    <div class="authforms" id="payList" style="margin-top:10px"></div>
+    <p class="authmsg" style="margin-top:10px">Use the SAME email as your ThumbPack account — Pro activates automatically after payment. <span class="bn">পেমেন্টের সময় ThumbPack account-এর email-টাই দিও — Pro নিজে থেকে চালু হয়ে যাবে।</span></p>
+  </div>
+
   <form class="card" id="genForm">
     <div class="grid">
       <div class="full">
@@ -204,7 +210,7 @@
   const $ = id => document.getElementById(id);
   const form = $("genForm"), goBtn = $("goBtn"), errBox = $("errBox");
   let token = localStorage.getItem("tp_token") || "";
-  let checkoutUrl = "";
+  let payCfg = null;
 
   function authHeaders(){ return token ? {"Authorization": "Bearer " + token} : {}; }
 
@@ -259,19 +265,34 @@
     refreshMe();
   });
   $("upgradeBtn").addEventListener("click", async () => {
-    if (!checkoutUrl){
-      try {
-        const cfg = await (await fetch(API + "/api/config")).json();
-        checkoutUrl = cfg.checkout_url_pro || "";
-      } catch {}
+    if (!payCfg){
+      try { payCfg = await (await fetch(API + "/api/config")).json(); }
+      catch { payCfg = {}; }
     }
-    if (checkoutUrl){
-      const url = checkoutUrl + (checkoutUrl.includes("?") ? "&" : "?")
-        + "checkout[email]=" + encodeURIComponent($("whoEmail").textContent);
-      window.open(url, "_blank");
-    } else {
+    const email = encodeURIComponent($("whoEmail").textContent);
+    const providers = [];
+    if (payCfg.checkout_url_pro) providers.push({name: "🍋 Lemon Squeezy",
+      url: payCfg.checkout_url_pro + (payCfg.checkout_url_pro.includes("?") ? "&" : "?") + "checkout[email]=" + email});
+    if (payCfg.gumroad_checkout_url) providers.push({name: "🛒 Gumroad",
+      url: payCfg.gumroad_checkout_url + (payCfg.gumroad_checkout_url.includes("?") ? "&" : "?") + "email=" + email});
+    if (payCfg.creem_checkout_url) providers.push({name: "💳 Creem",
+      url: payCfg.creem_checkout_url});
+    if (!providers.length){
       alert("💳 Payments opening soon — Pro checkout is being set up. Your free plan keeps working meanwhile!");
+      return;
     }
+    if (providers.length === 1){ window.open(providers[0].url, "_blank"); return; }
+    const panel = $("payPanel"), list = $("payList");
+    list.innerHTML = "";
+    providers.forEach(p => {
+      const b = document.createElement("button");
+      b.className = "btn small upgrade";
+      b.type = "button";
+      b.textContent = p.name;
+      b.addEventListener("click", () => { window.open(p.url, "_blank"); panel.classList.add("hidden"); });
+      list.appendChild(b);
+    });
+    panel.classList.toggle("hidden");
   });
   refreshMe();
 
