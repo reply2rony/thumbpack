@@ -10,11 +10,11 @@ no dependency on any other machine. Built for Hugging Face Spaces
 Environment:
   GEMINI_API_KEY  (required for generation; without it /api/generate
                    returns 503 {"error":"ai_not_configured"})
-  GEMINI_MODEL    (default "gemini-flash-latest" — verified live against
-                   Rony's key 2026-10-21: gemini-2.5-flash and
-                   gemini-2.0-flash return 404 "no longer available" for
-                   this key, and upstream points to gemini-3.8-flash,
-                   which also works via the alias when not overloaded)
+  GEMINI_MODEL    (default "gemini-3.5-flash" — verified live against
+                   Rony's key 2026-10-21 via the NATIVE generateContent
+                   API: gemini-3.5-flash and gemini-3.5-flash-lite answer,
+                   gemini-3.8-flash exists but is often busy, and all
+                   2.x names return 404 for this key)
   PORT            (default: config.json "port", else 7860) — binds 0.0.0.0
 
 The prompt text and the strict-JSON response schema are byte-for-byte the
@@ -40,7 +40,6 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE, "config.json")
 DB_PATH = os.path.join(BASE, "thumbpack.db")
 PAYMENTS_LOG = os.path.join(BASE, "payments.log")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 QUOTAS = {"free": 5, "pro": 200}
 PBKDF2_ROUNDS = 200_000
 MAX_BODY = 12 * 1024 * 1024
@@ -178,27 +177,43 @@ Rules:
 
 
 def call_gemini(api_key, model, messages):
-    """Model chain with auto-failover (2026-10-21, same multi-provider idea
-    as the image chain): each Gemini model has its own free quota bucket,
-    so on 429/503 we retry once, then hop to the next model. Returns
-    (content, model_used). Per-attempt timeout is short (45s) so stacked
-    retries can never hold a request open for many minutes."""
-    models = [model] + [m for m in ("gemini-2.5-flash", "gemini-2.0-flash",
-                                    "gemini-2.5-flash-lite")
+    """Native Gemini generateContent API + model chain with auto-failover
+    (2026-10-21). Verified live with Rony's key: gemini-3.5-flash and
+    gemini-3.5-flash-lite answer; the older 2.x names return 404 and the
+    OpenAI-compat shim stopped working for this key, so we call the native
+    endpoint with x-goog-api-key. Each model has its own free quota bucket:
+    on 429/503 retry once, then hop; on 404 hop immediately. Returns
+    (content, model_used). Per-attempt timeout 45s."""
+    models = [model] + [m for m in ("gemini-3.8-flash",
+                                    "gemini-3.5-flash-lite")
                         if m != model]
+    system = next((m["content"] for m in messages
+                   if m.get("role") == "system"), "")
+    user = next((m["content"] for m in messages
+                 if m.get("role") == "user"), "")
     last = "unknown error"
     for m in models:
-        body = json.dumps({"model": m, "temperature": 0.9,
-                           "messages": messages}).encode()
+        url = ("https://generativelanguage.googleapis.com/v1beta/models/" +
+               m + ":generateContent")
+        body = json.dumps({
+            "system_instruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": user}]}],
+            "generationConfig": {"temperature": 0.9}}).encode()
         for attempt in range(2):
             req = urllib.request.Request(
-                GEMINI_URL, data=body, method="POST",
+                url, data=body, method="POST",
                 headers={"Content-Type": "application/json",
-                         "Authorization": f"Bearer {api_key}"})
+                         "x-goog-api-key": api_key})
             try:
                 with urllib.request.urlopen(req, timeout=45) as resp:
                     data = json.loads(resp.read())
-                return data["choices"][0]["message"]["content"], m
+                parts = (data["candidates"][0]["content"]["parts"])
+                text = "".join(p.get("text", "") for p in parts).strip()
+                if not text:
+                    raise AIError("generation service returned an empty reply")
+                return text, m
+            except AIError:
+                raise
             except urllib.error.HTTPError as e:
                 last = f"generation service returned {e.code}"
                 if e.code not in (404, 429, 503):
@@ -381,7 +396,7 @@ def generate_package(payload, photo_url=""):
     api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
     if not api_key:
         return None  # caller maps this to 503 ai_not_configured
-    model = (os.environ.get("GEMINI_MODEL") or "gemini-flash-latest").strip()
+    model = (os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash").strip()
     niche = str(payload.get("niche") or "Other").strip()
     title = str(payload.get("title") or "").strip()
     if not title:
