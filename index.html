@@ -57,6 +57,12 @@
   .spinner{display:inline-block;width:16px;height:16px;border:3px solid rgba(255,255,255,.35);
     border-top-color:#fff;border-radius:50%;vertical-align:-3px;margin-right:9px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+  .waitbox{margin-top:14px;background:var(--card2);border:1px solid var(--accent);border-radius:10px;
+    padding:13px 15px;text-align:center}
+  .waitmsg{font-size:17px;line-height:1.55;font-weight:700;color:#ffd34d}
+  .waitmsg b{color:#57c7ff}
+  .waittimer{margin-top:7px;font-size:27px;font-weight:800;color:#7dff8a;letter-spacing:1px;
+    text-shadow:0 0 14px rgba(125,255,138,.5)}
   .small{color:var(--muted);font-size:12.5px;margin-top:10px;line-height:1.5}
   .authbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
     margin-bottom:20px}
@@ -132,6 +138,10 @@
     </div>
     <button class="primary" id="goBtn" type="submit">🚀 Generate Package</button>
     <div class="err" id="errBox"></div>
+    <div class="waitbox hidden" id="waitBox">
+      <div class="waitmsg">🙏 ধৈর্য ধরে অপেক্ষা করার জন্য ধন্যবাদ — for a technical &amp; perfect result, please wait up to <b>90 seconds maximum</b>.</div>
+      <div class="waittimer">⏱️ <span id="waitTimer">00:00</span> / 01:30</div>
+    </div>
   </form>
 
   <div id="results" class="hidden">
@@ -263,6 +273,14 @@
     if (!token){ showError("Please log in or create a free account first (top of the page)."); return; }
     goBtn.disabled = true;
     goBtn.innerHTML = '<span class="spinner"></span>Generating… (AI is thinking)';
+    const waitBox = $("waitBox"), waitTimer = $("waitTimer");
+    const t0 = Date.now();
+    waitTimer.textContent = "00:00";
+    waitBox.classList.remove("hidden");
+    const waitInt = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      waitTimer.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }, 500);
     try {
       const res = await fetch(API + "/api/generate", {
         method: "POST",
@@ -313,6 +331,8 @@
     } catch (err) {
       showError("Generation failed: " + err.message);
     } finally {
+      clearInterval(waitInt);
+      waitBox.classList.add("hidden");
       goBtn.disabled = false;
       goBtn.textContent = "🚀 Generate Package";
     }
