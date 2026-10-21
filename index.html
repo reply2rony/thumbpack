@@ -63,6 +63,11 @@
   .waitmsg b{color:#57c7ff}
   .waittimer{margin-top:7px;font-size:27px;font-weight:800;color:#7dff8a;letter-spacing:1px;
     text-shadow:0 0 14px rgba(125,255,138,.5)}
+  .showgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+  .showcard{background:var(--card2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .showcard img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
+  .showcard .cap{padding:10px 12px;font-size:14px;line-height:1.45}
+  .showcard .meta{padding:0 12px 11px;color:var(--muted);font-size:12px}
   .small{color:var(--muted);font-size:12.5px;margin-top:10px;line-height:1.5}
   .authbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
     margin-bottom:20px}
@@ -143,6 +148,12 @@
       <div class="waittimer">⏱️ <span id="waitTimer">00:00</span> / 01:30</div>
     </div>
   </form>
+
+  <div class="card" id="showcaseCard">
+    <h3 class="sec">🌟 Latest generated thumbnails</h3>
+    <div class="showgrid" id="showGrid"></div>
+    <div class="small" id="showEmpty">No generations yet — be the first to create one above! 🚀</div>
+  </div>
 
   <div id="results" class="hidden">
     <div class="card thumbbox">
@@ -251,6 +262,30 @@
   });
   refreshMe();
 
+  async function loadShowcase(){
+    try {
+      const res = await fetch(API + "/api/showcase");
+      const data = await res.json();
+      const items = (data && data.items) || [];
+      const grid = $("showGrid");
+      grid.innerHTML = "";
+      $("showEmpty").style.display = items.length ? "none" : "block";
+      items.forEach(it => {
+        const card = document.createElement("div");
+        card.className = "showcard";
+        const img = document.createElement("img");
+        img.src = it.image_url; img.alt = "Generated thumbnail"; img.loading = "lazy";
+        const cap = document.createElement("div");
+        cap.className = "cap"; cap.textContent = it.best_title || it.title || "";
+        const meta = document.createElement("div");
+        meta.className = "meta"; meta.textContent = (it.niche ? it.niche + " • " : "") + "Generated with ThumbPack";
+        card.appendChild(img); card.appendChild(cap); card.appendChild(meta);
+        grid.appendChild(card);
+      });
+    } catch (e) { /* showcase is best-effort */ }
+  }
+  loadShowcase();
+
   function showError(msg){
     errBox.style.display = "block";
     errBox.textContent = "⚠️ " + msg;
@@ -328,6 +363,7 @@
 
       $("results").classList.remove("hidden");
       $("results").scrollIntoView({behavior:"smooth", block:"start"});
+      loadShowcase();
     } catch (err) {
       showError("Generation failed: " + err.message);
     } finally {

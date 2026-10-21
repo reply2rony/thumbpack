@@ -78,6 +78,13 @@ def init_db():
             day TEXT NOT NULL,
             count INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY(user_id, day));
+        CREATE TABLE IF NOT EXISTS showcase(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            best_title TEXT NOT NULL,
+            image_url TEXT NOT NULL,
+            niche TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL);
     """)
     conn.commit()
     conn.close()
@@ -282,6 +289,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {
                 "email": user["email"], "plan": user["plan"],
                 "used_today": used, "quota": QUOTAS.get(user["plan"], 5)})
+        if path == "/api/showcase":
+            conn = db()
+            rows = conn.execute(
+                "SELECT title, best_title, image_url, niche, created_at "
+                "FROM showcase ORDER BY id DESC LIMIT 3").fetchall()
+            conn.close()
+            return self.send_json(200, {"items": [dict(r) for r in rows]})
         if path == "/api/config":
             cfg = load_config()
             return self.send_json(200, {
@@ -394,11 +408,17 @@ class Handler(BaseHTTPRequestHandler):
         if package is None:
             conn.close()
             return self.send_json(503, {"error": "ai_not_configured"})
-        # Success → count it, then return the package JSON.
+        # Success → count it, save it to the public showcase, then return it.
         conn.execute(
             "INSERT INTO usage(user_id, day, count) VALUES(?,?,1) "
             "ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1",
             (user["id"], today()))
+        conn.execute(
+            "INSERT INTO showcase(title, best_title, image_url, niche, created_at) "
+            "VALUES(?,?,?,?,?)",
+            (str(payload.get("title") or "")[:300], package["best_title"],
+             package["image_url"], str(payload.get("niche") or "")[:60],
+             datetime.now(timezone.utc).isoformat()))
         conn.commit()
         conn.close()
         return self.send_json(200, package)
