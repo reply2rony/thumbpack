@@ -340,13 +340,34 @@ def _pollinations_image(prompt, seed):
     return None
 
 
+def strip_watermark(raw):
+    """Pollinations' free tier stamps a small 'pollinations.ai' mark in the
+    bottom-right corner (it ignores nologo). Crop the bottom strip off those
+    images (Rony's order 2026-10-21); the frontend canvas re-frames to 16:9
+    anyway, so nothing of the subject is lost. No-op if Pillow is absent."""
+    try:
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        im = im.crop((0, 0, im.width, int(im.height * 0.92)))
+        out = io.BytesIO()
+        im.save(out, "JPEG", quality=88)
+        return out.getvalue()
+    except Exception:
+        return raw
+
+
 def generate_image(prompt, seed):
-    for raw in (_agnes_image(prompt), _cf_image(prompt),
-                _pollinations_image(prompt, seed)):
+    for raw in (_agnes_image(prompt), _cf_image(prompt)):
         if raw:
             saved = _save_generated(raw)
             if saved:
                 return saved
+    raw = _pollinations_image(prompt, seed)
+    if raw:
+        saved = _save_generated(strip_watermark(raw))
+        if saved:
+            return saved
     raise AIError("All image providers failed. Please try again.")
 
 
