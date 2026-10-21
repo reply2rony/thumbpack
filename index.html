@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ThumbPack — Thumbnail Packaging Suite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#0b0e14; --card:#151a24; --card2:#1c2230; --border:#2a3247;
@@ -12,7 +14,8 @@
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;}
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans Bengali",sans-serif;}
+  .bn{font-family:"Noto Sans Bengali",sans-serif;text-transform:none;letter-spacing:0;font-weight:600}
   .wrap{max-width:1060px;margin:0 auto;padding:28px 18px 60px}
   header{text-align:center;margin:10px 0 26px}
   header h1{margin:0;font-size:38px;letter-spacing:.5px}
@@ -68,6 +71,10 @@
   .showcard img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
   .showcard .cap{padding:10px 12px;font-size:14px;line-height:1.45}
   .showcard .meta{padding:0 12px 11px;color:var(--muted);font-size:12px}
+  .thumbwrap{position:relative}
+  .ovl{position:absolute;left:10px;bottom:8px;font-family:'Arial Black',Arial,sans-serif;
+    font-weight:900;font-size:21px;color:#ffd34d;letter-spacing:.3px;
+    text-shadow:2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 2px 6px rgba(0,0,0,.6)}
   .small{color:var(--muted);font-size:12.5px;margin-top:10px;line-height:1.5}
   .authbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
     margin-bottom:20px}
@@ -85,7 +92,7 @@
 <div class="wrap">
   <header>
     <h1>🎯 <span class="logo">ThumbPack</span></h1>
-    <p>Thumbnail Packaging Suite — viral titles, CTR scores &amp; a ready thumbnail in one click.</p>
+    <p>Thumbnail Packaging Suite — viral titles, CTR scores &amp; a ready thumbnail in one click.<br><span class="bn" style="color:var(--accent2);font-size:17px">ভাইরাল থাম্বনেইল, টাইটেল আর ট্যাগ — এক ক্লিকেই তৈরি!</span></p>
   </header>
 
   <div class="card authbar" id="authBar">
@@ -95,7 +102,7 @@
       <input id="authPass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
       <button class="btn small" id="loginBtn" type="button">Log in</button>
       <button class="btn small" id="registerBtn" type="button">Create account</button>
-      <span class="authmsg" id="authMsg">Free plan: 5 generations per day. Log in to generate.</span>
+      <span class="authmsg" id="authMsg">Free plan: 5 generations per day. Log in to generate. <span class="bn">ফ্রি প্ল্যানে প্রতিদিন ৫টি জেনারেশন — লগ ইন করে শুরু করুন।</span></span>
     </div>
     <!-- Logged-in view -->
     <div class="who hidden" id="whoBox">
@@ -111,8 +118,8 @@
   <form class="card" id="genForm">
     <div class="grid">
       <div class="full">
-        <label for="title">Video title / topic</label>
-        <input id="title" type="text" required placeholder="e.g. I Survived 24 Hours in a Haunted House">
+        <label for="title">Video title / topic <span class="bn">— ভিডিওর টাইটেল / বিষয়</span></label>
+        <input id="title" type="text" placeholder="e.g. I Survived 24 Hours in a Haunted House">
       </div>
       <div>
         <label for="niche">Niche</label>
@@ -130,7 +137,7 @@
         </select>
       </div>
       <div>
-        <label for="thumb_text">Big thumbnail text (optional)</label>
+        <label for="thumb_text">Big thumbnail text (optional) <span class="bn">— থাম্বনেইলের বড় লেখা</span></label>
         <input id="thumb_text" type="text" placeholder="e.g. 24 HOURS!">
       </div>
       <div>
@@ -141,7 +148,13 @@
         </select>
       </div>
     </div>
-    <button class="primary" id="goBtn" type="submit">🚀 Generate Package</button>
+    <div style="margin-top:14px">
+      <label for="photo">Your photo (optional) — use your own photo as the thumbnail <span class="bn">— তোমার নিজের ছবি</span></label>
+      <input id="photo" type="file" accept="image/*">
+      <img id="photoPreview" class="hidden" alt="Your photo preview" style="margin-top:10px;max-width:260px;border-radius:10px;border:1px solid var(--border)">
+      <div class="small">Two ways to generate: <b>text only</b> — AI draws the thumbnail for you, or <b>add your photo</b> — your photo becomes the thumbnail and AI writes the titles + tags around it. Big text is stamped on the thumbnail automatically.</div>
+    </div>
+    <button class="primary" id="goBtn" type="submit">🚀 Generate Package — <span class="bn">তৈরি করুন</span></button>
     <div class="err" id="errBox"></div>
     <div class="waitbox hidden" id="waitBox">
       <div class="waitmsg">🙏 ধৈর্য ধরে অপেক্ষা করার জন্য ধন্যবাদ — Perfect result build করার জন্য পুরো <b>90 seconds অপেক্ষা করা mandatory</b>। Please keep this page open — do not close or refresh until the timer finishes.</div>
@@ -150,14 +163,14 @@
   </form>
 
   <div class="card" id="showcaseCard">
-    <h3 class="sec">🌟 Latest generated thumbnails</h3>
+    <h3 class="sec">🌟 Latest generated thumbnails <span class="bn">— সর্বশেষ তৈরি থাম্বনেইল</span></h3>
     <div class="showgrid" id="showGrid"></div>
     <div class="small" id="showEmpty">No generations yet — be the first to create one above! 🚀</div>
   </div>
 
   <div id="results" class="hidden">
     <div class="card thumbbox">
-      <h3 class="sec">🖼️ Your thumbnail</h3>
+      <h3 class="sec">🖼️ Your thumbnail <span class="bn">— তোমার থাম্বনেইল</span></h3>
       <img id="thumbImg" alt="Generated thumbnail">
       <div class="rowbtns">
         <a class="btn" id="dlBtn" href="#" download="thumbnail.jpg">⬇️ Download</a>
@@ -173,11 +186,11 @@
         <div class="t" id="bestTitle"></div>
       </div>
       <div class="card" style="margin-bottom:20px">
-        <h3 class="sec">🔥 5 viral title options</h3>
+        <h3 class="sec">🔥 5 viral title options <span class="bn">— ৫টি ভাইরাল টাইটেল</span></h3>
         <div id="titleList"></div>
       </div>
       <div class="card">
-        <h3 class="sec">🏷️ SEO tags</h3>
+        <h3 class="sec">🏷️ SEO tags <span class="bn">— এসইও ট্যাগ</span></h3>
         <div class="chips" id="tagChips"></div>
         <div class="rowbtns"><button class="btn" id="copyTags" type="button">📋 Copy all tags</button></div>
       </div>
@@ -275,11 +288,20 @@
         card.className = "showcard";
         const img = document.createElement("img");
         img.src = it.image_url; img.alt = "Generated thumbnail"; img.loading = "lazy";
+        const wrap = document.createElement("div");
+        wrap.className = "thumbwrap";
+        wrap.appendChild(img);
+        const ovlText = it.thumb_text || shortHook(it.best_title);
+        if (ovlText){
+          const ovl = document.createElement("div");
+          ovl.className = "ovl"; ovl.textContent = ovlText.toUpperCase();
+          wrap.appendChild(ovl);
+        }
         const cap = document.createElement("div");
         cap.className = "cap"; cap.textContent = it.best_title || it.title || "";
         const meta = document.createElement("div");
         meta.className = "meta"; meta.textContent = (it.niche ? it.niche + " • " : "") + "Generated with ThumbPack";
-        card.appendChild(img); card.appendChild(cap); card.appendChild(meta);
+        card.appendChild(wrap); card.appendChild(cap); card.appendChild(meta);
         grid.appendChild(card);
       });
     } catch (e) { /* showcase is best-effort */ }
@@ -293,6 +315,76 @@
   function hideError(){ errBox.style.display = "none"; }
   function badgeClass(s){ return s >= 8 ? "good" : (s >= 6 ? "mid" : "low"); }
 
+  function shortHook(text){
+    const words = (text || "").toUpperCase().replace(/[^A-Z0-9 !?]/g, "").split(/\s+/).filter(Boolean);
+    return words.slice(0, 3).join(" ");
+  }
+
+  // Stamp the big hook text onto the thumbnail image itself (canvas), so the
+  // downloaded thumbnail carries its text like a real YouTube thumbnail.
+  async function composeThumbnail(imgUrl, hookText){
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = imgUrl; });
+    const W = 1280, H = 720;
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const x = c.getContext("2d");
+    const scale = Math.max(W / img.width, H / img.height);
+    const w = img.width * scale, h = img.height * scale;
+    x.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+    const g = x.createLinearGradient(0, H * 0.5, 0, H);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,0.6)");
+    x.fillStyle = g; x.fillRect(0, H * 0.5, W, H * 0.5);
+    if (hookText){
+      const words = hookText.toUpperCase().split(/\s+/).filter(Boolean);
+      const lines = []; let line = "";
+      words.forEach(wd => {
+        const cand = (line + " " + wd).trim();
+        if (line && cand.split(/\s+/).length > 2){ lines.push(line); line = wd; }
+        else line = cand;
+      });
+      if (line) lines.push(line);
+      const shown = lines.slice(0, 3);
+      const fs = shown.some(l => l.length > 11) ? 82 : 102;
+      x.font = "900 " + fs + "px 'Arial Black', Arial, sans-serif";
+      x.lineJoin = "round";
+      const lh = fs * 1.06;
+      const y0 = H - 40 - (shown.length - 1) * lh;
+      shown.forEach((ln, i) => {
+        x.strokeStyle = "#000"; x.lineWidth = 17;
+        x.strokeText(ln, 38, y0 + i * lh);
+        x.fillStyle = i === shown.length - 1 ? "#ffd34d" : "#ffffff";
+        x.fillText(ln, 38, y0 + i * lh);
+      });
+    }
+    return c.toDataURL("image/jpeg", 0.92);
+  }
+
+  const photoInput = $("photo");
+  photoInput.addEventListener("change", () => {
+    const f = photoInput.files[0];
+    const prev = $("photoPreview");
+    if (!f){ prev.classList.add("hidden"); return; }
+    prev.src = URL.createObjectURL(f);
+    prev.classList.remove("hidden");
+  });
+  function readPhoto(){
+    return new Promise((resolve) => {
+      const f = photoInput.files[0];
+      if (!f) return resolve("");
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => resolve("");
+      img.src = URL.createObjectURL(f);
+    });
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     hideError();
@@ -303,7 +395,9 @@
       thumb_text: $("thumb_text").value.trim(),
       style: $("style").value
     };
-    if (!payload.title){ showError("Please enter a video title or topic."); return; }
+    const photo = await readPhoto();
+    if (!payload.title && !photo){ showError("Please enter a video title or topic — or add your photo."); return; }
+    if (photo) payload.photo = photo;
 
     if (!token){ showError("Please log in or create a free account first (top of the page)."); return; }
     goBtn.disabled = true;
@@ -330,10 +424,13 @@
       refreshMe();
       if (!data.titles || !data.image_url) throw new Error("Unexpected response from server: " + JSON.stringify(data).slice(0, 300));
 
-      // Thumbnail
-      $("thumbImg").src = data.image_url;
+      // Thumbnail — stamp the big hook text onto the image itself.
+      const hook = payload.thumb_text || shortHook(data.best_title);
+      let finalUrl = data.image_url;
+      try { finalUrl = await composeThumbnail(data.image_url, hook); } catch (e) { /* keep raw image */ }
+      $("thumbImg").src = finalUrl;
       $("openBtn").href = data.image_url;
-      $("dlBtn").href = data.image_url;
+      $("dlBtn").href = finalUrl;
 
       // Titles
       $("bestTitle").textContent = data.best_title || (data.titles[0] && data.titles[0].title) || "";
@@ -370,7 +467,7 @@
       clearInterval(waitInt);
       waitBox.classList.add("hidden");
       goBtn.disabled = false;
-      goBtn.textContent = "🚀 Generate Package";
+      goBtn.textContent = "🚀 Generate Package — তৈরি করুন";
     }
   });
 

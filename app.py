@@ -20,6 +20,7 @@ Environment:
 The prompt text and the strict-JSON response schema are byte-for-byte the
 ones proven in the n8n workflow (see ../build-workflow.py).
 """
+import base64
 import hashlib
 import hmac
 import json
@@ -42,7 +43,9 @@ PAYMENTS_LOG = os.path.join(BASE, "payments.log")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 QUOTAS = {"free": 5, "pro": 200}
 PBKDF2_ROUNDS = 200_000
-MAX_BODY = 64 * 1024
+MAX_BODY = 12 * 1024 * 1024
+UPLOAD_DIR = os.path.join(BASE, "uploads")
+PHOTO_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 
 def load_config():
@@ -87,6 +90,11 @@ def init_db():
             created_at TEXT NOT NULL);
     """)
     conn.commit()
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(showcase)")]
+    if cols and "thumb_text" not in cols:
+        conn.execute("ALTER TABLE showcase ADD COLUMN "
+                     "thumb_text TEXT NOT NULL DEFAULT ''")
+        conn.commit()
     conn.close()
 
 
@@ -105,6 +113,26 @@ def used_today(conn, user_id):
         "SELECT count FROM usage WHERE user_id=? AND day=?", (user_id, today())
     ).fetchone()
     return row["count"] if row else 0
+
+
+def save_photo(data_url):
+    """Decode a base64 image data URL, store it under uploads/, and return
+    its public path (/uploads/<name>). Raises ValueError on bad input."""
+    if not data_url.startswith("data:") or "," not in data_url:
+        raise ValueError("Invalid photo data")
+    header, b64 = data_url.split(",", 1)
+    mime = header[5:].split(";")[0].strip().lower()
+    ext = PHOTO_EXT.get(mime)
+    if not ext:
+        raise ValueError("Photo must be JPG, PNG or WebP")
+    raw = base64.b64decode(b64)
+    if len(raw) > 8 * 1024 * 1024:
+        raise ValueError("Photo too large (max 8 MB)")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    name = secrets.token_hex(8) + ext
+    with open(os.path.join(UPLOAD_DIR, name), "wb") as f:
+        f.write(raw)
+    return "/uploads/" + name
 
 
 def log_payment(line):
@@ -187,17 +215,22 @@ def extract_json(text):
         return None
 
 
-def generate_package(payload):
+def generate_package(payload, photo_url=""):
     """Returns the package dict (same schema as the n8n webhook response),
-    or the AI-parse error dict — mirroring the workflow's behavior."""
+    or the AI-parse error dict — mirroring the workflow's behavior.
+    With photo_url set (photo mode), the creator's own photo is the
+    thumbnail image; Gemini still writes the titles/tags around it."""
     api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
     if not api_key:
         return None  # caller maps this to 503 ai_not_configured
     model = (os.environ.get("GEMINI_MODEL") or "gemini-flash-latest").strip()
+    niche = str(payload.get("niche") or "Other").strip()
     title = str(payload.get("title") or "").strip()
     if not title:
-        raise ValueError("Missing required field: title")
-    niche = str(payload.get("niche") or "Other").strip()
+        if photo_url:
+            title = "Untitled " + niche + " video"
+        else:
+            raise ValueError("Missing required field: title")
     platform = str(payload.get("platform") or "YouTube").strip()
     thumb_text = str(payload.get("thumb_text") or "").strip()
     style = str(payload.get("style") or "Shocked face").strip()
@@ -225,10 +258,20 @@ def generate_package(payload):
         best = max(titles, key=lambda t: t["ctr_score"])["title"]
     image_prompt = str(data.get("image_prompt") or "").strip() or \
         ("YouTube thumbnail about " + title + ", dramatic, bold colors, no text")
+    # Realism/dynamic booster (Rony's order 2026-10-21): the free image model
+    # drifts to an illustration look without explicit photographic language.
+    image_prompt += (", ultra-photorealistic, shot on a DSLR camera, "
+                     "hyper-detailed skin texture, dramatic dynamic composition, "
+                     "energetic pose, cinematic rim lighting, vibrant saturated "
+                     "colors, shallow depth of field, not an illustration, "
+                     "not anime, not a cartoon, not CGI")
     tags = [str(t).strip() for t in (data.get("tags") or []) if str(t).strip()][:15]
-    image_url = ("https://image.pollinations.ai/prompt/" +
-                 urllib.parse.quote(image_prompt, safe="") +
-                 f"?width=1280&height=720&nologo=true&seed={seed}")
+    if photo_url:
+        image_url = photo_url
+    else:
+        image_url = ("https://image.pollinations.ai/prompt/" +
+                     urllib.parse.quote(image_prompt, safe="") +
+                     f"?width=1280&height=720&nologo=true&seed={seed}")
     return {"titles": titles, "best_title": best, "tags": tags,
             "image_prompt": image_prompt, "image_url": image_url,
             "seed": seed, "platform": platform, "niche": niche,
@@ -292,7 +335,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/showcase":
             conn = db()
             rows = conn.execute(
-                "SELECT title, best_title, image_url, niche, created_at "
+                "SELECT title, best_title, image_url, niche, thumb_text, created_at "
                 "FROM showcase ORDER BY id DESC LIMIT 3").fetchall()
             conn.close()
             return self.send_json(200, {"items": [dict(r) for r in rows]})
@@ -302,6 +345,23 @@ class Handler(BaseHTTPRequestHandler):
                 "checkout_url_pro": cfg.get("lemonsqueezy_checkout_url_pro", "")})
         if path in ("/sample-thumbnail.jpg",):
             return self.serve_file(path.lstrip("/"), "image/jpeg")
+        if path.startswith("/uploads/"):
+            name = path[len("/uploads/"):]
+            ext = os.path.splitext(name)[1].lower()
+            ctypes = {".jpg": "image/jpeg", ".png": "image/png",
+                      ".webp": "image/webp"}
+            full = os.path.join(UPLOAD_DIR, name)
+            if (ext in ctypes and os.path.basename(name) == name
+                    and os.path.isfile(full)):
+                with open(full, "rb") as f:
+                    body = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ctypes[ext])
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            return self.send_json(404, {"error": "not_found"})
         return self.send_json(404, {"error": "not_found"})
 
     def serve_file(self, name, ctype):
@@ -400,8 +460,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(402, {"error": "quota_exceeded", "upgrade": True,
                                         "used_today": used, "quota": quota})
         payload = self.read_json()
+        photo_url = ""
+        photo_data = payload.pop("photo", "")
+        if photo_data:
+            try:
+                path_only = save_photo(str(photo_data))
+            except ValueError as e:
+                conn.close()
+                return self.send_json(400, {"error": str(e)})
+            host = self.headers.get("Host") or "localhost"
+            proto = self.headers.get("X-Forwarded-Proto") or \
+                ("https" if host.endswith("onrender.com") else "http")
+            photo_url = f"{proto}://{host}{path_only}"
         try:
-            package = generate_package(payload)
+            package = generate_package(payload, photo_url)
         except AIError as e:
             conn.close()
             return self.send_json(502, {"error": str(e)})
@@ -414,10 +486,11 @@ class Handler(BaseHTTPRequestHandler):
             "ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1",
             (user["id"], today()))
         conn.execute(
-            "INSERT INTO showcase(title, best_title, image_url, niche, created_at) "
-            "VALUES(?,?,?,?,?)",
+            "INSERT INTO showcase(title, best_title, image_url, niche, thumb_text, created_at) "
+            "VALUES(?,?,?,?,?,?)",
             (str(payload.get("title") or "")[:300], package["best_title"],
              package["image_url"], str(payload.get("niche") or "")[:60],
+             str(payload.get("thumb_text") or "")[:80],
              datetime.now(timezone.utc).isoformat()))
         conn.commit()
         conn.close()
