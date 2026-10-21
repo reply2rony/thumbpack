@@ -8,6 +8,10 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false   # set in Render dashboard → Environment (never commit the key)
+      - key: CF_ACCOUNT_ID
+        sync: false   # Cloudflare Workers AI (image chain provider #1)
+      - key: CF_API_TOKEN
+        sync: false   # Cloudflare API token with Workers AI permission
       - key: PORT
         value: 7860
     healthCheckPath: /
