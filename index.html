@@ -411,11 +411,20 @@
       waitTimer.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
     }, 500);
     try {
-      const res = await fetch(API + "/api/generate", {
-        method: "POST",
-        headers: {"Content-Type": "application/json", ...authHeaders()},
-        body: JSON.stringify(payload)
-      });
+      const ctl = new AbortController();
+      const killer = setTimeout(() => ctl.abort(), 420000);
+      let res;
+      try {
+        res = await fetch(API + "/api/generate", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", ...authHeaders()},
+          body: JSON.stringify(payload),
+          signal: ctl.signal
+        });
+      } catch (fe) {
+        if (fe.name === "AbortError") throw new Error("It is taking too long. Your thumbnail may still be saved in the Latest section below — wait a minute, then reload the page. অনেক সময় লাগছে — একটু অপেক্ষা করে page-টা reload করুন।");
+        throw fe;
+      } finally { clearTimeout(killer); }
       const data = await res.json().catch(() => null);
       if (res.status === 401) throw new Error("Your session expired — please log in again (top of the page).");
       if (res.status === 402) throw new Error("You've used all " + (data ? data.quota : 5) + " free generations for today. ⭐ Upgrade to Pro for 200/day — tap the Upgrade button at the top.");

@@ -178,7 +178,9 @@ Rules:
 
 
 def call_gemini(api_key, model, messages):
-    """One logical call with 2 retries on 429/503 (3 attempts total)."""
+    """One logical call with 2 retries on 429/503 (3 attempts total).
+    Per-attempt timeout is short (45s) so stacked retries can never hold
+    a generation request open for many minutes (2026-10-21 stuck-flow fix)."""
     body = json.dumps({"model": model, "temperature": 0.9,
                        "messages": messages}).encode()
     last = "unknown error"
@@ -188,7 +190,7 @@ def call_gemini(api_key, model, messages):
             headers={"Content-Type": "application/json",
                      "Authorization": f"Bearer {api_key}"})
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=45) as resp:
                 data = json.loads(resp.read())
             return data["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
@@ -379,11 +381,14 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- helpers ----------
     def send_json(self, code, obj):
         body = json.dumps(obj).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # client already gone (long generation) — nothing to send to
 
     def read_body(self):
         n = int(self.headers.get("Content-Length") or 0)
