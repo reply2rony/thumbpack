@@ -1,0 +1,13 @@
+# Render Blueprint for ThumbPack (optional — manual deploy also works)
+# If this file sits at the repo root, Render's "New → Blueprint" can read it.
+services:
+  - type: web
+    name: thumbpack
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false   # set in Render dashboard → Environment (never commit the key)
+      - key: PORT
+        value: 7860
+    healthCheckPath: /

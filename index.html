@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThumbPack — Thumbnail Packaging Suite</title>
+<style>
+  :root{
+    --bg:#0b0e14; --card:#151a24; --card2:#1c2230; --border:#2a3247;
+    --text:#e8ecf4; --muted:#9aa5bb; --accent:#ff4d2e; --accent2:#ffb020;
+    --good:#2ecc71; --mid:#ffb020; --low:#e74c3c; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;}
+  .wrap{max-width:1060px;margin:0 auto;padding:28px 18px 60px}
+  header{text-align:center;margin:10px 0 26px}
+  header h1{margin:0;font-size:38px;letter-spacing:.5px}
+  header h1 .logo{background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  header p{color:var(--muted);margin:8px 0 0;font-size:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid .full{grid-column:1/-1}
+  label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:0 0 7px;text-transform:uppercase;letter-spacing:.6px}
+  input,select{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);
+    background:var(--card2);color:var(--text);font-size:16px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  button.primary{width:100%;margin-top:20px;padding:15px;border:0;border-radius:11px;cursor:pointer;
+    font-size:18px;font-weight:800;color:#fff;background:linear-gradient(90deg,var(--accent),#ff7a18);
+    transition:transform .08s ease,opacity .2s}
+  button.primary:hover{transform:translateY(-1px)}
+  button.primary:disabled{opacity:.55;cursor:wait;transform:none}
+  .err{display:none;margin-top:18px;background:#3a1620;border:1px solid #7c2436;color:#ffb4c0;
+    padding:13px 16px;border-radius:10px;font-size:14px;white-space:pre-wrap;word-break:break-word}
+  .hidden{display:none!important}
+  #results{margin-top:26px;display:grid;grid-template-columns:1.25fr 1fr;gap:20px}
+  @media (max-width:820px){#results{grid-template-columns:1fr}.grid{grid-template-columns:1fr}}
+  .thumbbox img{width:100%;border-radius:10px;display:block;border:1px solid var(--border);background:#000}
+  .rowbtns{display:flex;gap:10px;margin-top:12px}
+  .btn{flex:1;text-align:center;padding:11px;border-radius:9px;border:1px solid var(--border);
+    background:var(--card2);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  h3.sec{margin:0 0 12px;font-size:15px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+  .best{background:linear-gradient(135deg,#2b1608,#3a2410);border:1px solid var(--accent2)!important}
+  .best .t{font-size:19px;font-weight:800;line-height:1.35}
+  .best .tag{display:inline-block;font-size:11px;font-weight:800;color:#111;background:var(--accent2);
+    border-radius:20px;padding:3px 10px;margin-bottom:9px;letter-spacing:.5px}
+  .titleitem{display:flex;justify-content:space-between;align-items:center;gap:12px;
+    background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:9px}
+  .titleitem .t{font-size:15px;line-height:1.4}
+  .badge{flex:0 0 auto;font-weight:800;font-size:13px;color:#0b0e14;border-radius:8px;padding:5px 9px;min-width:52px;text-align:center}
+  .badge.good{background:var(--good)} .badge.mid{background:var(--mid)} .badge.low{background:var(--low)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:20px;
+    padding:6px 12px;font-size:13px}
+  .spinner{display:inline-block;width:16px;height:16px;border:3px solid rgba(255,255,255,.35);
+    border-top-color:#fff;border-radius:50%;vertical-align:-3px;margin-right:9px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .small{color:var(--muted);font-size:12.5px;margin-top:10px;line-height:1.5}
+  .authbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+    margin-bottom:20px}
+  .authbar .who{font-size:14.5px;line-height:1.5}
+  .authbar .who b{color:var(--accent2)}
+  .authforms{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .authforms input{width:auto;flex:1 1 170px;padding:10px 12px;font-size:14.5px}
+  .btn.small{flex:0 0 auto;padding:10px 14px;font-size:13.5px}
+  .btn.upgrade{background:linear-gradient(90deg,var(--accent2),#ffd34d);color:#111;border:0}
+  .authmsg{font-size:13.5px;color:var(--muted);width:100%}
+  .authmsg.err2{color:#ffb4c0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🎯 <span class="logo">ThumbPack</span></h1>
+    <p>Thumbnail Packaging Suite — viral titles, CTR scores &amp; a ready thumbnail in one click.</p>
+  </header>
+
+  <div class="card authbar" id="authBar">
+    <!-- Logged-out view -->
+    <div class="authforms" id="authForms">
+      <input id="authEmail" type="email" placeholder="Email" autocomplete="email">
+      <input id="authPass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+      <button class="btn small" id="loginBtn" type="button">Log in</button>
+      <button class="btn small" id="registerBtn" type="button">Create account</button>
+      <span class="authmsg" id="authMsg">Free plan: 5 generations per day. Log in to generate.</span>
+    </div>
+    <!-- Logged-in view -->
+    <div class="who hidden" id="whoBox">
+      👤 <b id="whoEmail"></b><br>
+      Plan: <b id="whoPlan"></b> · <span id="whoUsage"></span>
+    </div>
+    <div class="authforms hidden" id="userBtns">
+      <button class="btn small upgrade" id="upgradeBtn" type="button">⭐ Upgrade to Pro</button>
+      <button class="btn small" id="logoutBtn" type="button">Log out</button>
+    </div>
+  </div>
+
+  <form class="card" id="genForm">
+    <div class="grid">
+      <div class="full">
+        <label for="title">Video title / topic</label>
+        <input id="title" type="text" required placeholder="e.g. I Survived 24 Hours in a Haunted House">
+      </div>
+      <div>
+        <label for="niche">Niche</label>
+        <select id="niche">
+          <option>Entertainment</option><option>Kids Cartoon</option><option>News</option>
+          <option>Tech</option><option>Gaming</option><option>Finance</option>
+          <option>Food</option><option>Education</option><option>Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="platform">Platform</label>
+        <select id="platform">
+          <option value="YouTube">YouTube (1280×720)</option>
+          <option value="Facebook">Facebook (1280×720)</option>
+        </select>
+      </div>
+      <div>
+        <label for="thumb_text">Big thumbnail text (optional)</label>
+        <input id="thumb_text" type="text" placeholder="e.g. 24 HOURS!">
+      </div>
+      <div>
+        <label for="style">Style</label>
+        <select id="style">
+          <option>Shocked face</option><option>Happy/excited</option><option>Serious</option>
+          <option>Funny</option><option>No person - object only</option>
+        </select>
+      </div>
+    </div>
+    <button class="primary" id="goBtn" type="submit">🚀 Generate Package</button>
+    <div class="err" id="errBox"></div>
+  </form>
+
+  <div id="results" class="hidden">
+    <div class="card thumbbox">
+      <h3 class="sec">🖼️ Your thumbnail</h3>
+      <img id="thumbImg" alt="Generated thumbnail">
+      <div class="rowbtns">
+        <a class="btn" id="dlBtn" href="#" download="thumbnail.jpg">⬇️ Download</a>
+        <a class="btn" id="openBtn" href="#" target="_blank" rel="noopener">🔍 Open full size</a>
+      </div>
+      <p class="small">Tip: add your big text in any editor (Canva/Photoshop) — the image is
+      composed with clear space for it, text-free so nothing gets garbled.</p>
+    </div>
+
+    <div>
+      <div class="card best" style="margin-bottom:20px">
+        <span class="tag">⭐ BEST TITLE — HIGHEST CTR PICK</span>
+        <div class="t" id="bestTitle"></div>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <h3 class="sec">🔥 5 viral title options</h3>
+        <div id="titleList"></div>
+      </div>
+      <div class="card">
+        <h3 class="sec">🏷️ SEO tags</h3>
+        <div class="chips" id="tagChips"></div>
+        <div class="rowbtns"><button class="btn" id="copyTags" type="button">📋 Copy all tags</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Same-origin API (app.py) — generation is account-gated with daily quotas.
+  const API = "";
+  const $ = id => document.getElementById(id);
+  const form = $("genForm"), goBtn = $("goBtn"), errBox = $("errBox");
+  let token = localStorage.getItem("tp_token") || "";
+  let checkoutUrl = "";
+
+  function authHeaders(){ return token ? {"Authorization": "Bearer " + token} : {}; }
+
+  async function refreshMe(){
+    if (!token){
+      $("authForms").classList.remove("hidden");
+      $("whoBox").classList.add("hidden");
+      $("userBtns").classList.add("hidden");
+      return;
+    }
+    try {
+      const res = await fetch(API + "/api/me", {headers: authHeaders()});
+      if (!res.ok) throw new Error("session expired");
+      const me = await res.json();
+      $("whoEmail").textContent = me.email;
+      $("whoPlan").textContent = me.plan === "pro" ? "Pro ⭐" : "Free";
+      $("whoUsage").textContent = me.plan === "pro"
+        ? me.used_today + "/" + me.quota + " generations today"
+        : me.used_today + "/" + me.quota + " free generations today";
+      $("authForms").classList.add("hidden");
+      $("whoBox").classList.remove("hidden");
+      $("userBtns").classList.remove("hidden");
+    } catch {
+      token = ""; localStorage.removeItem("tp_token");
+      refreshMe();
+    }
+  }
+
+  async function authCall(path){
+    const email = $("authEmail").value.trim(), password = $("authPass").value;
+    const msg = $("authMsg");
+    msg.classList.remove("err2"); msg.textContent = "Working…";
+    try {
+      const res = await fetch(API + path, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email, password})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ("Server returned " + res.status));
+      token = data.token; localStorage.setItem("tp_token", token);
+      msg.textContent = "✅ Logged in as " + data.email;
+      refreshMe();
+    } catch (err) {
+      msg.classList.add("err2"); msg.textContent = "⚠️ " + err.message;
+    }
+  }
+  $("loginBtn").addEventListener("click", () => authCall("/api/login"));
+  $("registerBtn").addEventListener("click", () => authCall("/api/register"));
+  $("logoutBtn").addEventListener("click", async () => {
+    try { await fetch(API + "/api/logout", {method: "POST", headers: authHeaders()}); } catch {}
+    token = ""; localStorage.removeItem("tp_token");
+    refreshMe();
+  });
+  $("upgradeBtn").addEventListener("click", async () => {
+    if (!checkoutUrl){
+      try {
+        const cfg = await (await fetch(API + "/api/config")).json();
+        checkoutUrl = cfg.checkout_url_pro || "";
+      } catch {}
+    }
+    if (checkoutUrl){
+      const url = checkoutUrl + (checkoutUrl.includes("?") ? "&" : "?")
+        + "checkout[email]=" + encodeURIComponent($("whoEmail").textContent);
+      window.open(url, "_blank");
+    } else {
+      alert("💳 Payments opening soon — Pro checkout is being set up. Your free plan keeps working meanwhile!");
+    }
+  });
+  refreshMe();
+
+  function showError(msg){
+    errBox.style.display = "block";
+    errBox.textContent = "⚠️ " + msg;
+  }
+  function hideError(){ errBox.style.display = "none"; }
+  function badgeClass(s){ return s >= 8 ? "good" : (s >= 6 ? "mid" : "low"); }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideError();
+    const payload = {
+      title: $("title").value.trim(),
+      niche: $("niche").value,
+      platform: $("platform").value,
+      thumb_text: $("thumb_text").value.trim(),
+      style: $("style").value
+    };
+    if (!payload.title){ showError("Please enter a video title or topic."); return; }
+
+    if (!token){ showError("Please log in or create a free account first (top of the page)."); return; }
+    goBtn.disabled = true;
+    goBtn.innerHTML = '<span class="spinner"></span>Generating… (AI is thinking)';
+    try {
+      const res = await fetch(API + "/api/generate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json", ...authHeaders()},
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => null);
+      if (res.status === 401) throw new Error("Your session expired — please log in again (top of the page).");
+      if (res.status === 402) throw new Error("You've used all " + (data ? data.quota : 5) + " free generations for today. ⭐ Upgrade to Pro for 200/day — tap the Upgrade button at the top.");
+      if (!res.ok || !data) throw new Error("Server returned " + res.status + (data && data.error ? " — " + data.error : ""));
+      if (data.error) throw new Error(data.error);
+      refreshMe();
+      if (!data.titles || !data.image_url) throw new Error("Unexpected response from server: " + JSON.stringify(data).slice(0, 300));
+
+      // Thumbnail
+      $("thumbImg").src = data.image_url;
+      $("openBtn").href = data.image_url;
+      $("dlBtn").href = data.image_url;
+
+      // Titles
+      $("bestTitle").textContent = data.best_title || (data.titles[0] && data.titles[0].title) || "";
+      $("titleList").innerHTML = "";
+      data.titles.forEach(t => {
+        const score = Number(t.ctr_score) || 0;
+        const div = document.createElement("div");
+        div.className = "titleitem";
+        div.innerHTML = '<span class="t"></span><span class="badge ' + badgeClass(score) + '">' + score.toFixed(1) + "</span>";
+        div.querySelector(".t").textContent = t.title;
+        $("titleList").appendChild(div);
+      });
+
+      // Tags
+      const tags = data.tags || [];
+      $("tagChips").innerHTML = "";
+      tags.forEach(tag => {
+        const c = document.createElement("span");
+        c.className = "chip"; c.textContent = tag;
+        $("tagChips").appendChild(c);
+      });
+      $("copyTags").onclick = async () => {
+        try { await navigator.clipboard.writeText(tags.join(", ")); $("copyTags").textContent = "✅ Copied!"; }
+        catch { $("copyTags").textContent = tags.join(", "); }
+        setTimeout(() => $("copyTags").textContent = "📋 Copy all tags", 1800);
+      };
+
+      $("results").classList.remove("hidden");
+      $("results").scrollIntoView({behavior:"smooth", block:"start"});
+    } catch (err) {
+      showError("Generation failed: " + err.message);
+    } finally {
+      goBtn.disabled = false;
+      goBtn.textContent = "🚀 Generate Package";
+    }
+  });
+
+  // Real download (blob) so the button saves the file instead of just opening it.
+  $("dlBtn").addEventListener("click", async (e) => {
+    const url = $("dlBtn").href;
+    if (!url || url.endsWith("#")) return;
+    e.preventDefault();
+    try {
+      const r = await fetch(url);
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "thumbnail.jpg";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch { window.open(url, "_blank"); }
+  });
+</script>
+</body>
+</html>
