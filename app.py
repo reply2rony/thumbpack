@@ -245,6 +245,39 @@ def _save_generated(raw):
     return "/uploads/" + name
 
 
+def _agnes_image(prompt):
+    """Agnes AI image API (agnes-image-2.1-flash) — native ~16:9, fast,
+    photorealistic. Needs AGNES_API_KEY in the environment."""
+    key = (os.environ.get("AGNES_API_KEY") or "").strip()
+    if not key:
+        return None
+    try:
+        req = urllib.request.Request(
+            "https://apihub.agnes-ai.com/v1/images/generations",
+            data=json.dumps({"model": "agnes-image-2.1-flash",
+                             "prompt": prompt, "n": 1,
+                             "size": "1280x720"}).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + key}, method="POST")
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+        d = (data.get("data") or [{}])[0]
+        if d.get("b64_json"):
+            raw = base64.b64decode(d["b64_json"])
+            if _img_ext(raw):
+                return raw
+        elif d.get("url"):
+            r2 = urllib.request.Request(
+                d["url"], headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(r2, timeout=60) as resp2:
+                raw = resp2.read()
+            if _img_ext(raw):
+                return raw
+    except Exception:
+        pass
+    return None
+
+
 def _cf_image(prompt):
     """Cloudflare Workers AI (free daily neurons) — SDXL then FLUX."""
     aid = (os.environ.get("CF_ACCOUNT_ID") or "").strip()
@@ -301,7 +334,8 @@ def _pollinations_image(prompt, seed):
 
 
 def generate_image(prompt, seed):
-    for raw in (_cf_image(prompt), _pollinations_image(prompt, seed)):
+    for raw in (_agnes_image(prompt), _cf_image(prompt),
+                _pollinations_image(prompt, seed)):
         if raw:
             saved = _save_generated(raw)
             if saved:
