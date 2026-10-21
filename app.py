@@ -178,30 +178,37 @@ Rules:
 
 
 def call_gemini(api_key, model, messages):
-    """One logical call with 2 retries on 429/503 (3 attempts total).
-    Per-attempt timeout is short (45s) so stacked retries can never hold
-    a generation request open for many minutes (2026-10-21 stuck-flow fix)."""
-    body = json.dumps({"model": model, "temperature": 0.9,
-                       "messages": messages}).encode()
+    """Model chain with auto-failover (2026-10-21, same multi-provider idea
+    as the image chain): each Gemini model has its own free quota bucket,
+    so on 429/503 we retry once, then hop to the next model. Returns
+    (content, model_used). Per-attempt timeout is short (45s) so stacked
+    retries can never hold a request open for many minutes."""
+    models = [model] + [m for m in ("gemini-2.5-flash", "gemini-2.0-flash",
+                                    "gemini-2.5-flash-lite")
+                        if m != model]
     last = "unknown error"
-    for attempt in range(3):
-        req = urllib.request.Request(
-            GEMINI_URL, data=body, method="POST",
-            headers={"Content-Type": "application/json",
-                     "Authorization": f"Bearer {api_key}"})
-        try:
-            with urllib.request.urlopen(req, timeout=45) as resp:
-                data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:
-            last = f"generation service returned {e.code}"
-            if e.code not in (429, 503):
-                raise AIError(last)
-        except Exception as e:
-            last = f"generation service unreachable: {e}"
-        if attempt < 2:
-            time.sleep(2 * (attempt + 1))
-    raise AIError(last + " (after retries)")
+    for m in models:
+        body = json.dumps({"model": m, "temperature": 0.9,
+                           "messages": messages}).encode()
+        for attempt in range(2):
+            req = urllib.request.Request(
+                GEMINI_URL, data=body, method="POST",
+                headers={"Content-Type": "application/json",
+                         "Authorization": f"Bearer {api_key}"})
+            try:
+                with urllib.request.urlopen(req, timeout=45) as resp:
+                    data = json.loads(resp.read())
+                return data["choices"][0]["message"]["content"], m
+            except urllib.error.HTTPError as e:
+                last = f"generation service returned {e.code}"
+                if e.code not in (429, 503):
+                    raise AIError(last)
+            except Exception as e:
+                last = f"generation service unreachable: {e}"
+                break  # network-level failure: try the next model
+            if attempt < 1:
+                time.sleep(6)
+    raise AIError(last + " (all models busy — free quota; try again shortly)")
 
 
 def extract_json(text):
@@ -364,8 +371,9 @@ def generate_package(payload, photo_url=""):
     style = str(payload.get("style") or "Shocked face").strip()
     seed = random.randint(1, 999999)
 
-    content = call_gemini(api_key, model,
-                          build_messages(title, niche, platform, thumb_text, style))
+    content, model = call_gemini(
+        api_key, model,
+        build_messages(title, niche, platform, thumb_text, style))
     data = extract_json(content)
     if not data or not isinstance(data.get("titles"), list):
         return {"error": "AI did not return valid JSON. Please try again.",
