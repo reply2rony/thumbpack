@@ -14,6 +14,8 @@ services:
         sync: false   # our own secret inside the Gumroad Ping URL (?secret=)
       - key: CREEM_WEBHOOK_SECRET
         sync: false   # Creem webhook signing secret
+      - key: CREEM_API_KEY
+        sync: false   # Creem Content Moderation API key (screens every prompt before generation)
       - key: AGNES_API_KEY
         sync: false   # Agnes AI image API (image chain provider #1)
       - key: CF_ACCOUNT_ID

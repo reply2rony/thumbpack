@@ -86,6 +86,10 @@
   .btn.upgrade{background:linear-gradient(90deg,var(--accent2),#ffd34d);color:#111;border:0}
   .authmsg{font-size:13.5px;color:var(--muted);width:100%}
   .authmsg.err2{color:#ffb4c0}
+  footer{margin-top:34px;border-top:1px solid var(--border);padding-top:18px;
+    color:var(--muted);font-size:13.5px;line-height:1.8;text-align:center}
+  footer a{color:#57c7ff;text-decoration:none;margin:0 9px}
+  footer a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -102,7 +106,7 @@
       <input id="authPass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
       <button class="btn small" id="loginBtn" type="button">Log in</button>
       <button class="btn small" id="registerBtn" type="button">Create account</button>
-      <span class="authmsg" id="authMsg">Free plan: 5 generations per day. Log in to generate. <span class="bn">ফ্রি প্ল্যানে প্রতিদিন ৫টি জেনারেশন — লগ ইন করে শুরু করুন।</span></span>
+      <span class="authmsg" id="authMsg">Free plan: 5 generations per day. <b>ThumbPack Pro — $9/month</b> for 200 per day. Log in to generate. <span class="bn">ফ্রি প্ল্যানে প্রতিদিন ৫টি জেনারেশন — Pro মাত্র $9/মাসে প্রতিদিন ২০০টি। লগ ইন করে শুরু করুন।</span></span>
     </div>
     <!-- Logged-in view -->
     <div class="who hidden" id="whoBox">
@@ -110,13 +114,13 @@
       Plan: <b id="whoPlan"></b> · <span id="whoUsage"></span>
     </div>
     <div class="authforms hidden" id="userBtns">
-      <button class="btn small upgrade" id="upgradeBtn" type="button">⭐ Upgrade to Pro</button>
+      <button class="btn small upgrade" id="upgradeBtn" type="button">⭐ Upgrade to Pro — $9/mo</button>
       <button class="btn small" id="logoutBtn" type="button">Log out</button>
     </div>
   </div>
 
   <div class="card hidden" id="payPanel" style="margin-bottom:20px">
-    <b>⭐ ThumbPack Pro — choose a payment method:</b>
+    <b>⭐ ThumbPack Pro — $9/month: choose a payment method:</b>
     <div class="authforms" id="payList" style="margin-top:10px"></div>
     <p class="authmsg" style="margin-top:10px">Use the SAME email as your ThumbPack account — Pro activates automatically after payment. <span class="bn">পেমেন্টের সময় ThumbPack account-এর email-টাই দিও — Pro নিজে থেকে চালু হয়ে যাবে।</span></p>
   </div>
@@ -202,6 +206,17 @@
       </div>
     </div>
   </div>
+
+  <footer>
+    <div>Free plan: 5 generations/day · <b>ThumbPack Pro — $9/month</b> (200/day, cancel anytime)</div>
+    <div>
+      <a href="/privacy">Privacy Policy</a>·
+      <a href="/terms">Terms of Service</a>·
+      <a href="/acceptable-use">Acceptable Use Policy</a>
+    </div>
+    <div>Support: <a href="mailto:reply2falcon@gmail.com">reply2falcon@gmail.com</a> <span class="bn">— যেকোনো সমস্যায় ইমেইল করুন</span></div>
+    <div id="operatorLine" class="hidden"></div>
+  </footer>
 </div>
 
 <script>
@@ -295,6 +310,18 @@
     panel.classList.toggle("hidden");
   });
   refreshMe();
+
+  // Footer: show the site operator's legal name when configured.
+  (async () => {
+    try {
+      const cfg = await (await fetch(API + "/api/config")).json();
+      if (cfg.operator_legal_name){
+        const el = $("operatorLine");
+        el.textContent = "Operated by " + cfg.operator_legal_name;
+        el.classList.remove("hidden");
+      }
+    } catch { /* footer operator line is optional */ }
+  })();
 
   async function loadShowcase(){
     try {
@@ -448,7 +475,7 @@
       } finally { clearTimeout(killer); }
       const data = await res.json().catch(() => null);
       if (res.status === 401) throw new Error("Your session expired — please log in again (top of the page).");
-      if (res.status === 402) throw new Error("You've used all " + (data ? data.quota : 5) + " free generations for today. ⭐ Upgrade to Pro for 200/day — tap the Upgrade button at the top.");
+      if (res.status === 402) throw new Error("You've used all " + (data ? data.quota : 5) + " free generations for today. ⭐ Upgrade to Pro — $9/month for 200/day — tap the Upgrade button at the top.");
       if (!res.ok || !data) throw new Error("Server returned " + res.status + (data && data.error ? " — " + data.error : ""));
       if (data.error) throw new Error(data.error);
       refreshMe();

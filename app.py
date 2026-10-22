@@ -140,6 +140,246 @@ def log_payment(line):
 
 
 # ---------------------------------------------------------------------------
+# Creem Content Moderation — every user-supplied prompt is screened BEFORE
+# any generation (Creem compliance requirement for AI generation products).
+# Contract (https://docs.creem.io/features/moderation):
+#   POST {base}/v1/moderation/prompt
+#   base = https://api.creem.io (prod keys "creem_...") or
+#          https://test-api.creem.io (sandbox keys "creem_test_...")
+#   headers: x-api-key: <CREEM_API_KEY>, content-type: application/json
+#   body:    {"prompt": str, "external_id": str (optional)}
+#   reply:   {"id", "object": "moderation_result", "prompt", "external_id",
+#             "decision": "allow" | "flag" | "deny", "usage": {"units": n}}
+# "flag" is treated exactly like "deny" (blocked), per Creem's own
+# recommendation. When CREEM_API_KEY is set but the API call fails, we fail
+# CLOSED (503, no generation). When the key is unset (local dev), we log a
+# warning and skip screening.
+# ---------------------------------------------------------------------------
+
+SUPPORT_EMAIL = "reply2falcon@gmail.com"
+
+
+def moderation_block(text, external_id=""):
+    """Screen user text via the Creem Moderation API. Returns None when the
+    text may proceed to generation, else (http_status, error_dict)."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    key = (os.environ.get("CREEM_API_KEY") or "").strip()
+    if not key:
+        print("[thumbpack] WARNING: CREEM_API_KEY not set — content "
+              "moderation SKIPPED (dev mode)", file=sys.stderr, flush=True)
+        return None
+    base = ("https://test-api.creem.io" if key.startswith("creem_test_")
+            else "https://api.creem.io")
+    body = {"prompt": text}
+    if external_id:
+        body["external_id"] = external_id
+    req = urllib.request.Request(
+        base + "/v1/moderation/prompt",
+        data=json.dumps(body).encode(), method="POST",
+        headers={"Content-Type": "application/json", "x-api-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+    except Exception as e:  # fail closed — never generate unscreened
+        print(f"[thumbpack] moderation API call failed: {e}",
+              file=sys.stderr, flush=True)
+        return (503, {"error": "moderation_unavailable",
+                      "message": "Content moderation is temporarily "
+                                 "unavailable. Please try again shortly."})
+    decision = str(data.get("decision") or "").lower()
+    if decision == "allow":
+        return None
+    if decision == "deny":
+        return (400, {"error": "prompt_rejected",
+                      "message": "Your prompt was rejected because it "
+                                 "violates our content policy (see "
+                                 "/acceptable-use). Please revise and try "
+                                 "again."})
+    if decision == "flag":
+        return (400, {"error": "prompt_flagged",
+                      "message": "Your prompt could not be processed "
+                                 "because it was flagged by content "
+                                 "moderation. Please revise and try again."})
+    # Unknown verdict — fail closed.
+    print(f"[thumbpack] moderation returned unknown decision: {data!r}",
+          file=sys.stderr, flush=True)
+    return (503, {"error": "moderation_unavailable",
+                  "message": "Content moderation is temporarily "
+                             "unavailable. Please try again shortly."})
+
+
+# ---------------------------------------------------------------------------
+# Legal pages (Creem compliance: Privacy Policy, Terms of Service,
+# Acceptable Use Policy incl. explicit NSFW rules). Inline HTML in the same
+# dark style as index.html. English-only is acceptable for compliance.
+# ---------------------------------------------------------------------------
+
+def _legal_page(title, body_html):
+    cfg = load_config()
+    operator = (cfg.get("operator_legal_name") or "").strip()
+    operator_html = (f"<p>Operated by {operator}.</p>" if operator else "")
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title} — ThumbPack</title>
+<style>
+  body{{margin:0;background:#0b0e14;color:#e8ecf4;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}}
+  .wrap{{max-width:820px;margin:0 auto;padding:32px 18px 60px;line-height:1.65}}
+  h1{{font-size:30px}} h2{{font-size:19px;margin-top:30px;color:#ffb020}}
+  a{{color:#57c7ff}} .muted{{color:#9aa5bb;font-size:13px}}
+  footer{{margin-top:44px;border-top:1px solid #2a3247;padding-top:18px;
+    color:#9aa5bb;font-size:14px;line-height:1.7}}
+  footer a{{margin-right:16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>{title}</h1>
+<p class="muted">ThumbPack — Thumbnail Packaging Suite · Last updated: October 23, 2026</p>
+{body_html}
+<footer>
+  <a href="/">Home</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/acceptable-use">Acceptable Use Policy</a>
+  <p>Support: <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a></p>
+  {operator_html}
+</footer>
+</div>
+</body>
+</html>"""
+
+
+PRIVACY_BODY = """
+<h2>What we collect</h2>
+<p>We collect the minimum needed to run ThumbPack: your account email
+address, a securely hashed password (we never store your plain password),
+your plan status, and a per-day count of how many generations you have
+used.</p>
+<h2>Photos you upload</h2>
+<p>If you use photo mode, the photo you upload is used <b>only</b> to
+generate your thumbnail package. Uploaded photos and generated images are
+stored on our server under <code>/uploads/</code> so the finished thumbnail
+can be delivered back to you (and shown in the public “latest thumbnails”
+showcase together with the title/tags generated for it). We do not sell
+photos, and we do not use them to train models. You may ask us to delete
+your uploaded photos at any time by emailing
+<a href="mailto:reply2falcon@gmail.com">reply2falcon@gmail.com</a> from your
+account email address; we will delete them on request.</p>
+<h2>Payments</h2>
+<p>Subscriptions are sold through third-party payment processors
+(Gumroad, Creem and Lemon Squeezy). Your card details go directly to the
+processor — we never receive, see or store your full card number on our
+servers. The processors send us a payment notification containing your
+email address so we can activate (or, after a refund/cancellation,
+deactivate) your Pro plan.</p>
+<h2>Content moderation</h2>
+<p>Prompts you submit are screened by the Creem Content Moderation API
+before generation (see our <a href="/acceptable-use">Acceptable Use
+Policy</a>). The prompt text is sent to Creem for that screening only.</p>
+<h2>Cookies &amp; analytics</h2>
+<p>We keep this minimal: your login session is kept in your browser's
+local storage (not a tracking cookie), and we do not run third-party
+advertising or cross-site analytics trackers.</p>
+<h2>Data retention &amp; your rights</h2>
+<p>Account data is kept while your account exists. You may request access
+to, correction of, or deletion of your account and uploaded photos at any
+time via the support email below.</p>
+<h2>Contact</h2>
+<p>Privacy questions: <a href="mailto:reply2falcon@gmail.com">reply2falcon@gmail.com</a></p>
+"""
+
+TERMS_BODY = """
+<h2>The service</h2>
+<p>ThumbPack is an online tool that generates video thumbnail packages —
+title suggestions with predicted CTR scores, SEO tags, and an AI-generated
+thumbnail image (or a package built around a photo you upload). Output is
+generated by third-party AI models and is provided “as is” without any
+guarantee of views, clicks or revenue.</p>
+<h2>Plans and pricing</h2>
+<p><b>Free plan:</b> 5 generations per day, no payment required.
+<b>ThumbPack Pro: $9/month</b> (USD), 200 generations per day. The Pro
+price is shown on this site before you sign up or check out. You may
+cancel your subscription at any time through the payment processor you
+paid with; cancellation stops future renewals. If a payment is refunded,
+charged back or a subscription is cancelled/ended, the account returns to
+the Free plan automatically.</p>
+<h2>Your content and rights</h2>
+<p>You are responsible for the prompts and photos you submit. Only upload
+photos and request content that you own or have the legal right to use
+(including rights in any person's likeness). As between you and us, you
+retain your rights in content you create with ThumbPack, subject to the
+terms of the underlying AI model providers. You must follow our
+<a href="/acceptable-use">Acceptable Use Policy</a> at all times;
+violations may lead to blocked generations and account termination.</p>
+<h2>Accounts</h2>
+<p>You are responsible for activity under your account and for keeping
+your password confidential. Accounts are for one person's use.</p>
+<h2>Availability</h2>
+<p>Generation depends on third-party AI providers and free-tier quotas;
+we may limit, suspend or change the service, and generation may
+occasionally fail or be delayed. Daily quotas reset at midnight UTC.</p>
+<h2>Limitation of liability</h2>
+<p>To the maximum extent permitted by law, ThumbPack and its operator are
+not liable for indirect, incidental or consequential losses (including
+lost views, revenue or profits) arising from use of the service or from
+AI-generated output. Nothing in these terms limits liability that cannot
+lawfully be limited.</p>
+<h2>Contact</h2>
+<p>Questions about these terms:
+<a href="mailto:reply2falcon@gmail.com">reply2falcon@gmail.com</a></p>
+"""
+
+ACCEPTABLE_USE_BODY = """
+<h2>Purpose</h2>
+<p>ThumbPack generates images and text with AI. To keep the service safe
+and available to everyone, all prompts are screened by automated content
+moderation (the Creem Content Moderation API) before generation, and the
+rules below apply to every prompt, upload and generation.</p>
+<h2>Prohibited content — including explicit NSFW rules</h2>
+<p>You must NOT use ThumbPack to request, generate, upload or distribute:</p>
+<ul>
+<li><b>Sexual or NSFW content of any kind</b> — nudity, sexual acts,
+erotic or sexually suggestive content, fetish content, or “borderline”
+content designed to evade this rule. ThumbPack is a strictly
+family-safe thumbnail tool: NSFW prompts are blocked, without
+exception.</li>
+<li><b>Any content involving minors</b> — including sexualised, exploitative
+or otherwise harmful depictions of people under 18, whether real,
+photorealistic or illustrated. Such attempts are blocked and reported
+where required by law.</li>
+<li><b>Violence and gore</b> — graphic violence, gore, or content that
+glorifies terrorism, extremism or self-harm.</li>
+<li><b>Hate and harassment</b> — content attacking or demeaning people
+based on protected characteristics, or targeted harassment/bullying of
+identifiable individuals.</li>
+<li><b>Impersonation and deepfakes</b> — content that impersonates real
+people, or photorealistic depictions of real, identifiable people
+(including public figures) presented as genuine, or intended to deceive
+viewers.</li>
+<li><b>Illegal content</b> — anything that violates applicable law,
+infringes intellectual-property or privacy rights, promotes illegal
+goods/services, fraud, scams or other deceptive practices.</li>
+</ul>
+<h2>How enforcement works</h2>
+<p>Every prompt is screened automatically before it reaches an AI model.
+Prompts that the moderation system denies or flags are rejected and no
+generation takes place. Repeated or serious violations may lead to
+immediate account termination without refund eligibility beyond what the
+payment processor's own policies provide. Moderation decisions are made
+by the Creem Content Moderation API against Creem's content policies, in
+addition to the rules above.</p>
+<h2>Appeals and contact</h2>
+<p>If you believe a generation was blocked in error, contact
+<a href="mailto:reply2falcon@gmail.com">reply2falcon@gmail.com</a> with your
+account email and a description of the prompt.</p>
+"""
+
+
+
+# ---------------------------------------------------------------------------
 # Generation — direct Gemini call + strict-JSON parse.
 # Prompt text and response schema are verbatim ports of the n8n workflow's
 # "Prepare" / "Parse Package" Code nodes (../build-workflow.py).
@@ -147,6 +387,14 @@ def log_payment(line):
 
 class AIError(Exception):
     """Generation backend failure → HTTP 502 (after retries)."""
+
+
+class ModerationBlocked(Exception):
+    """Creem moderation rejected a prompt → carries (http_status, body)."""
+
+    def __init__(self, blocked):
+        self.code, self.body = blocked
+        super().__init__(self.body.get("error", "prompt_rejected"))
 
 
 def build_messages(title, niche, platform, thumb_text, style):
@@ -443,6 +691,11 @@ def generate_package(payload, photo_url=""):
     if photo_url:
         image_url = photo_url
     else:
+        # The model-written image prompt is also screened before it is
+        # routed to any image generation model (Creem requirement).
+        blocked = moderation_block(image_prompt)
+        if blocked:
+            raise ModerationBlocked(blocked)
         image_url = generate_image(image_prompt, seed)
     return {"titles": titles, "best_title": best, "tags": tags,
             "image_prompt": image_prompt, "image_url": image_url,
@@ -493,10 +746,24 @@ class Handler(BaseHTTPRequestHandler):
         return row
 
     # ---------- routes ----------
+    def send_html(self, code, html):
+        body = html.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/":
             return self.serve_file("index.html", "text/html; charset=utf-8")
+        if path == "/privacy":
+            return self.send_html(200, _legal_page("Privacy Policy", PRIVACY_BODY))
+        if path == "/terms":
+            return self.send_html(200, _legal_page("Terms of Service", TERMS_BODY))
+        if path == "/acceptable-use":
+            return self.send_html(200, _legal_page("Acceptable Use Policy", ACCEPTABLE_USE_BODY))
         if path == "/api/me":
             user = self.auth_user()
             if not user:
@@ -519,7 +786,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {
                 "checkout_url_pro": cfg.get("lemonsqueezy_checkout_url_pro", ""),
                 "gumroad_checkout_url": cfg.get("gumroad_checkout_url", ""),
-                "creem_checkout_url": cfg.get("creem_checkout_url", "")})
+                "creem_checkout_url": cfg.get("creem_checkout_url", ""),
+                "operator_legal_name": cfg.get("operator_legal_name", "")})
         if path in ("/sample-thumbnail.jpg",):
             return self.serve_file(path.lstrip("/"), "image/jpeg")
         if path.startswith("/uploads/"):
@@ -633,6 +901,16 @@ class Handler(BaseHTTPRequestHandler):
         user = self.auth_user()
         if not user:
             return self.send_json(401, {"error": "not_logged_in"})
+        payload = self.read_json()
+        # Creem Content Moderation: screen the user-supplied prompt text
+        # (title + thumbnail text) BEFORE quota, billing or any model call.
+        mod_text = " ".join(
+            str(payload.get(k) or "").strip()
+            for k in ("title", "thumb_text")).strip()
+        blocked = moderation_block(mod_text, f"user_{user['id']}")
+        if blocked:
+            code, obj = blocked
+            return self.send_json(code, obj)
         quota = QUOTAS.get(user["plan"], 5)
         conn = db()
         used = used_today(conn, user["id"])
@@ -640,7 +918,6 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
             return self.send_json(402, {"error": "quota_exceeded", "upgrade": True,
                                         "used_today": used, "quota": quota})
-        payload = self.read_json()
         photo_url = ""
         photo_data = payload.pop("photo", "")
         if photo_data:
@@ -655,6 +932,9 @@ class Handler(BaseHTTPRequestHandler):
             photo_url = f"{proto}://{host}{path_only}"
         try:
             package = generate_package(payload, photo_url)
+        except ModerationBlocked as e:
+            conn.close()
+            return self.send_json(e.code, e.body)
         except AIError as e:
             conn.close()
             return self.send_json(502, {"error": str(e)})
